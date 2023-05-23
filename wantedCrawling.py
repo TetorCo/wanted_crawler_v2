@@ -1,18 +1,14 @@
-# 초기에 selenium은 install 해야할 수 있음
-# !pip install selenium
-# !pip install pandas
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
-from jdLink import filter
-import time, datetime, sys, webDriver, re, os
+import time
+import re
+import json
+import datetime
 import pandas as pd
-
-# ### Python의 버전, 웹 드라이버 버전, Pandas 버전 확인
-# print(f'Python Version : {sys.version}')
-# print(f'Selenium webdriver Version : {webdriver.__version__}')
-# print(f'Pandas Version : {pd.__version__}')
+import webDriver  # webDriver.py
+from jdLink import filter
+from jdLink import jobClassification
 
 # ‘chromedriver’은(는) Apple에서 악성 소프트웨어가 있는지 확인할 수 없기 때문에 열 수 없습니다. 가 뜨면
 # !xattr -d com.apple.quarantine chromedriver
@@ -65,13 +61,17 @@ def scroll_down(driver):
 
 # 채용공고 url 획득
 
-def get_urls(driver, url):
+def get_urls(driver, url, category):
+
+    cnt = 0
 
     driver.get(url)
     time.sleep(3)
 
     # urls 저장
     position_urls = []
+
+    cancelJob = []
 
 #     # 50인 이하 클릭
 #     driver.find_element(By.XPATH,'/html/body/div[1]/div[3]/div/div/div[1]/div[1]/section/div/div/div/div/div[6]/div/button').click()
@@ -85,27 +85,37 @@ def get_urls(driver, url):
 
     totalUrl = driver.find_elements(By.CLASS_NAME, 'JobCard_container__FqChn')
 
-    time.sleep(1)
+    time.sleep(3)
 
     for i in range(len(totalUrl)):
 
         tempCard = totalUrl[i].find_element(By.TAG_NAME, 'a') # driver.find_element(By.CLASS_NAME, 'List_List_container__JnQMS').find_element(By.CSS_SELECTOR, 'ul').find_elements(By.CSS_SELECTOR, 'li')[i].find_element(By.CSS_SELECTOR, 'div').find_element(By.CSS_SELECTOR, 'a').get_attribute('href')
 
-        # print(tempCard.get_attribute('href'))
-        position_urls.append(tempCard.get_attribute('href'))
+        # print(tempCard.get_attribute('href'))  # 공고 URL
+        # print(tempCard.get_attribute('data-position-name'))  # 공고 이름
+        jobName = tempCard.get_attribute('data-position-name')
+
+        if jobClassification(category, jobName):
+            position_urls.append(tempCard.get_attribute('href'))
+            # print(f'True: {jobName}')
+        else:
+            print(f'False : {jobName} & {tempCard.get_attribute("href")}')
+            # cancelJob.append([jobName, tempCard.get_attribute('href')])
+            cnt += 1
 
         # break
 
-    print("링크 개수 : ", end='')
-    print(len(totalUrl))
+    print(f"링크 개수 : {len(totalUrl)} - {cnt} = {len(totalUrl) - cnt}")
 
-    return position_urls
+
+    return position_urls, cancelJob
 
 
 # 각 채용공고 별 상세 jd 획득
 def crawling_wanted(position_urls, driver):
 
     results =[]
+    print(f'총 공고 수 : {len(position_urls)}')
 
     for i in range(len(position_urls)):
 
@@ -124,7 +134,7 @@ def crawling_wanted(position_urls, driver):
             'URL' : '',
             '기술스택 ・ 툴' : '',
         }
-        time.sleep(1.5)
+        time.sleep(3)
 
         # 기업명, 공고 제목, URL
         try:
@@ -132,20 +142,21 @@ def crawling_wanted(position_urls, driver):
             result['기업명'] = company_name
 
             job_title = driver.find_elements(By.XPATH, '/html/body/div[1]/div[3]/div[1]/div[1]/div[1]/section[2]/h2')[0].text
+            result['공고 제목'] = job_title
 
-            words = re.split('[],(,[, -, _, /, )]', job_title)
-            words = [i.lower() for i in words]
-            words = ' '.join(words).split()
+            # words = re.split('[],(,[, -, _, /, )]', job_title)
+            # words = [i.lower() for i in words]
+            # words = ' '.join(words).split()
 
-            for idx in range(len(words)):
-                if words[idx] not in filter:
-                    # result['공고 제목'] = job_title
-                    cnt += 1
+            # for idx in range(len(words)):
+            #     if words[idx] not in filter:
+            #         # result['공고 제목'] = job_title
+            #         cnt += 1
 
-            if cnt == len(words):
-                print(f"{job_title}은 적절하지 않은 공고같습니다.\n{position_urls[i]}")
-                continue
-            else: result['공고 제목'] = job_title
+            # if cnt == len(words):
+            #     print(f"{job_title}은 적절하지 않은 공고같습니다.\n{position_urls[i]}")
+            #     continue
+            # else: result['공고 제목'] = job_title
 
             industry = driver.find_elements(By.XPATH, '/html/body/div[1]/div[3]/div[1]/div[1]/div[1]/section[3]/button[1]/div[2]/h6')[0].text
             result['산업분류'] = industry
@@ -158,7 +169,7 @@ def crawling_wanted(position_urls, driver):
             action = ActionChains(driver)
             element = driver.find_elements(By.CLASS_NAME, 'WarningHeader_WarningHeader__F1ikW')[0]
             action.move_to_element(element).perform()
-            # time.sleep(1.5)
+            time.sleep(1.5)
 
 
             # 마감일
@@ -169,7 +180,7 @@ def crawling_wanted(position_urls, driver):
             # JD - title
             driver.find_elements(By.XPATH, '/html/body/div[1]/div[3]/div[1]/div[1]/div[1]/div[2]/section[1]/h6')
             size = len(driver.find_elements(By.XPATH, '/html/body/div[1]/div[3]/div[1]/div[1]/div[1]/div[2]/section[1]/h6'))
-            # time.sleep(1.5)
+            time.sleep(1.5)
 
             for j in range(1, size+1):
                 title = driver.find_elements(By.XPATH, '/html/body/div[1]/div[3]/div[1]/div[1]/div[1]/div[2]/section[1]/h6')[j-1].text
@@ -179,7 +190,7 @@ def crawling_wanted(position_urls, driver):
                     # time.sleep(1.5)
 
             results.append(result)
-            time.sleep(1.5)
+            time.sleep(3)
 
         except:
             print("채용 정보를 가져오지 못 했습니다.")
@@ -198,20 +209,23 @@ def make_df(results):
     return wanted_crawling
 
 
-def save_df(wanted_crawling):
+def save_df(wanted_crawling, category):
     # Data Frame save
     today = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    wanted_crawling.to_csv(f'./crawlingData/{today}_wanted_crawling.csv', index=False, line_terminator = '\n')
+    wanted_crawling.to_csv(f'./crawlingData/{today}_{category}_wanted_crawling.csv', index=False, line_terminator = '\n')
     print('Save 완료!')
 
 
-def gatherJD(urls, driver):
+def gatherJD(urls, driver, category, cancelJobDict=None):
 
     for i in range(len(urls)):
         if i == 0:
-            positionUrls = get_urls(driver, urls[i])
+            positionUrls, cancelJobList = get_urls(driver, urls[i], category)
+            # cancelJobDict[category].update(cancelJobList)
         else:
-            positionUrls.extend(get_urls(driver, urls[i]))
+            jobList, cancelJobList = get_urls(driver, urls[i], category)
+            positionUrls.extend(jobList)
+            # cancelJobDict[category].update(cancelJobList)
 
     return positionUrls
 
@@ -221,26 +235,9 @@ if __name__ == "__main__":
     driver = webDriver.driver_start()
 
     # 데이터 과학자는 공고 X / ML과 MLOps는 같이 크롤링됨.
-    MLE_url = ['https://www.wanted.co.kr/search?query=ML',
-    'https://www.wanted.co.kr/search?query=machine%20learning',
-    'https://www.wanted.co.kr/search?query=%EB%A8%B8%EC%8B%A0%EB%9F%AC%EB%8B%9D',
-    'https://www.wanted.co.kr/search?query=deep%20learning',
-    'https://www.wanted.co.kr/search?query=%EB%94%A5%EB%9F%AC%EB%8B%9D',
-    'https://www.wanted.co.kr/search?query=%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5']
-    DS_url = ['https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%EC%82%AC%EC%9D%B4%EC%96%B8%ED%8B%B0%EC%8A%A4%ED%8A%B8',
-    'https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EC%82%AC%EC%9D%B4%EC%96%B8%ED%8B%B0%EC%8A%A4%ED%8A%B8',
-    'https://www.wanted.co.kr/search?query=data%20scientist',
-    'https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EA%B3%BC%ED%95%99%EC%9E%90']
-    DA_url = ['https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EB%B6%84%EC%84%9D%EA%B0%80',
-    'https://www.wanted.co.kr/search?query=data%20analyst',
-    'https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EC%95%A0%EB%84%90%EB%A6%AC%EC%8A%A4%ED%8A%B8']
-    DE_url = ['https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4',
-    'https://www.wanted.co.kr/search?query=data%20engineer',
-    'https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4']
-    BE_url = ['https://www.wanted.co.kr/search?query=%EB%B0%B1%EC%97%94%EB%93%9C%20%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4',
-        'https://www.wanted.co.kr/search?query=Backend%20Engineer']
 
-    get_urls(driver, 'https://www.wanted.co.kr/search?query=ML')
+
+    get_urls(driver, 'https://www.wanted.co.kr/search?query=%EB%8D%B0%EC%9D%B4%ED%84%B0%20%EC%97%94%EC%A7%80%EB%8B%88%EC%96%B4', 'de')
     ## Test용
     # testResult = crawling_wanted(['https://www.wanted.co.kr/wd/143199'], driver)
     # testResult2 = crawling_wanted(['https://www.wanted.co.kr/wd/97166'], driver)
